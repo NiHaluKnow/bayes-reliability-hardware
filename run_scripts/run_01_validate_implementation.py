@@ -1,44 +1,11 @@
 """
-run_01_validate_implementation.py
-==================================
+
 OBJECTIVE 1 (Re-implementation / validation half):
 
     "Reproduce the Weibull / prior-distribution / Monte-Carlo pipeline
     described in the base paper in Python, and validate the implementation
     against the base paper's published results."
 
-We validate the implementation in two complementary ways:
-
-  (a) PARAMETER-RECOVERY TEST -- simulate a right-censored Weibull sample
-      from KNOWN (beta_true, kappa) values, then check that:
-        * MLE recovers beta_true as sample size grows,
-        * MLE / MVUE / quadrature-Bayes / Monte-Carlo-Bayes reliability
-          curves all converge to the TRUE R(t) curve,
-        * the two independent Bayes computations (near-exact quadrature vs.
-          the paper's own two-stage Monte-Carlo replication, Eq. 29-30)
-          agree with each other to within Monte-Carlo error.
-      This is the standard way to validate a statistical-estimation
-      implementation when the published paper's own numeric tables cannot
-      be reproduced bit-for-bit (see note below).
-
-  (b) BASE-PAPER STRUCTURAL CHECK -- reproduce the paper's own Section 6/7
-      Weibull worked example structurally (same style of parameters:
-      t_s, a, sigma, a_w; same Monte-Carlo replication counts k_s x k_r as
-      Table 8's "200 replications" design) and confirm our implementation
-      shows the same QUALITATIVE behaviour the paper reports in its
-      Conclusions: "as time increases the reliability decreases" and "the
-      MVUE of reliability and the Bayes reliability are numerically close."
-
-  NOTE ON EXACT NUMERIC REPRODUCTION: the base paper's own published Tables
-  (4, 5, 8) contain a number of internal inconsistencies (e.g. Table 5's
-  Weibull column is not monotonically decreasing at rows 30/40 and 90, and
-  Table 2's last MVUE-ratio row breaks the pattern of every other row) that
-  are very likely OCR/typesetting errors in the original journal PDF rather
-  than genuine values -- so bit-for-bit reproduction of those specific
-  numbers is neither possible nor a meaningful validation target. We
-  therefore validate structurally/qualitatively against the paper and
-  quantitatively via parameter recovery, which is the standard and more
-  rigorous form of validation for a from-scratch re-implementation.
 """
 
 import sys
