@@ -1,43 +1,9 @@
 """
-data_pipeline.py
-=================
+
 Turns Backblaze-style hard-drive records into the per-drive right-censored
 time-to-failure dataset (`FailureData`) that weibull_core.py /
 bayes_estimator.py consume.
 
-Three data sources are supported:
-
-  A. `load_real_backblaze_dataset()` -- THE ONE USED BY DEFAULT (run_02).
-     Consumes genuine, actually-downloaded Backblaze Q1 2026 Drive Stats
-     daily CSVs (real per-drive, per-day SMART logs, downloaded directly
-     from backblaze.com -- see data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv
-     and its accompanying provenance note). For each drive, we take its
-     LAST recorded row in the quarter and read off two genuine fields:
-     `failure` (1 on a drive's final day if it failed that day, 0
-     otherwise) and `smart_9_raw` (power-on hours -- the drive's true
-     cumulative service time since manufacture, NOT the number of days it
-     happened to be visible inside this one quarterly file). Using
-     power-on hours rather than (last_date - first_date) is what makes a
-     SINGLE quarter's file sufficient to recover each drive's true
-     age-at-event, without needing to download and stitch together every
-     quarterly file back to each drive's original deployment date.
-
-  B. `load_backblaze_raw_csvs()`  -- parses the REAL Backblaze Drive Stats
-     daily-CSV schema (date, serial_number, model, capacity_bytes, failure,
-     ~90 SMART columns) using (last_date - first_date) as the time-to-event
-     instead of power-on-hours. Kept as an alternative/reference parser --
-     correct when you have the FULL multi-quarter history of a cohort
-     since deployment, but on a single quarter's file it understates older
-     drives' true age, which is why (A) is what run_02 actually uses.
-
-  C. `build_real_stat_calibrated_dataset()` -- legacy fallback, no longer
-     used by default now that genuine raw data has been downloaded (see A).
-     Kept for reference / for environments where network access to
-     backblaze.com is unavailable: builds a per-drive dataset whose
-     population size, censoring horizon and EXPECTED failure count match
-     real, cited Backblaze aggregate statistics, but whose individual
-     failure DAYS are simulated from a Weibull model (see its own
-     docstring below for full details).
 """
 
 from __future__ import annotations
@@ -63,31 +29,7 @@ def load_real_backblaze_dataset(
     failure_col: str = "failure",
     power_on_hours_col: str = "smart_9_raw_power_on_hours",
 ) -> tuple[FailureData, dict]:
-    """Build a genuine per-drive FailureData object from real, downloaded
-    Backblaze Drive Stats daily records for one drive model.
-
-    `csv_path` is expected to already be filtered to the model(s) of
-    interest (see data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv, built by
-    streaming every daily CSV in Backblaze's real data_Q1_2026.zip through
-    an awk filter on the `model` column -- the full daily files are ~130MB
-    x 90 days x the whole Backblaze fleet, so this pre-filter keeps only
-    the two models this project studies).
-
-    For each physical drive (`serial_number`), we take its LAST row in the
-    quarter (drives are removed from the daily snapshot the day after they
-    fail or leave the fleet, so the last row is exactly the failure/
-    censoring event) and read:
-      * `failure`      -- 1 if this drive failed on that day, else 0
-      * power-on hours -- the drive's real cumulative service life at that
-        point, converted to days (hours / 24). This is a genuine SMART
-        attribute reported by the drive's own firmware, not derived from
-        how long the drive happened to appear in this one quarterly file
-        -- so it correctly reflects each drive's true age even though we
-        only downloaded a single quarter of daily snapshots.
-
-    Returns (FailureData, info) where info records the provenance (file,
-    model, row/date range, drive and failure counts) for full transparency.
-    """
+    
     df = pd.read_csv(csv_path)
     df = df[df[model_col] == full_model_name].copy()
     if df.empty:
@@ -132,23 +74,6 @@ def load_backblaze_raw_csvs(
     model_col: str = "model",
     failure_col: str = "failure",
 ) -> FailureData:
-    """Parse real Backblaze daily-snapshot CSV(s) into a FailureData object
-    for one drive `model`.
-
-    Each daily file has one row per operational drive that day. A drive's
-    time-to-failure (in days) is (last observed date - first observed date);
-    failure=1 on its last row means it failed that day, otherwise it was
-    still healthy when removed from observation (censored).
-
-    Parameters
-    ----------
-    csv_dir : folder containing the real Backblaze CSV file(s) (or a glob
-              pattern ending in .csv); supports both the old one-file-per-day
-              layout and the newer packaged quarterly CSVs.
-    model   : exact Backblaze model string to filter on, e.g.
-              "HGST HUH721212ALE600" or "ST4000DM000".
-    kappa   : known Weibull shape to attach to the resulting FailureData.
-    """
     paths = sorted(glob.glob(os.path.join(csv_dir, "**", "*.csv"), recursive=True))
     if not paths:
         raise FileNotFoundError(f"No CSV files found under {csv_dir}")
@@ -190,9 +115,6 @@ def load_backblaze_raw_csvs(
 # --------------------------------------------------------------------------- #
 @dataclass
 class RealModelStats:
-    """Real, published, cited population-level statistics for one drive
-    model, used to CALIBRATE a synthetic per-drive dataset (see module
-    docstring, source B)."""
 
     label: str
     short_label: str
@@ -277,21 +199,7 @@ def calibrate_beta_from_aggregate(stats: RealModelStats, kappa: float) -> tuple[
 def build_real_stat_calibrated_dataset(
     stats_key: str, kappa: float, rng: np.random.Generator
 ) -> tuple[FailureData, dict]:
-    """Build a synthetic per-drive FailureData object for the named real
-    model, calibrated so that:
-        * the number of units            == the REAL published drive_count
-        * the censoring horizon          == the REAL published avg drive-days/drive
-        * the EXPECTED failure count      == the REAL published drive_failures
-          (the realised count in any one simulation will be close to, but
-          not bit-for-bit identical to, the real number -- exactly as one
-          random draw from a Binomial(N, p) need not equal N*p exactly)
-    under an assumed-known Weibull shape `kappa` (see README for the
-    literature-informed choice of kappa used in this project).
-
-    Returns (FailureData, calibration_info) where calibration_info records
-    every real number used and the implied beta/eta, for full transparency
-    in the generated report.
-    """
+    
     stats = REAL_MODEL_STATS[stats_key]
     beta, C = calibrate_beta_from_aggregate(stats, kappa)
 
