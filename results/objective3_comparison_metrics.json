@@ -7,7 +7,7 @@
     "rmse_MLE_vs_KM": 0.0014344932110733303,
     "rmse_MVUE_vs_KM": 0.001329725538169533,
     "rmse_Bayes_vs_KM": 0.0014611402320495318,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/comparison_HGST_12TB_full_data.png",
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/comparison_HGST_12TB_full_data.png",
     "scenario": "full_data",
     "label": "HGST HUH721212ALE600 (12 TB) -- large, long-tenured cohort"
   },
@@ -19,7 +19,7 @@
     "rmse_MLE_vs_KM": 0.0019263487695425718,
     "rmse_MVUE_vs_KM": 0.9991297637799154,
     "rmse_Bayes_vs_KM": 0.0013946818016677587,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/comparison_HGST_12TB_limited_data.png",
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/comparison_HGST_12TB_limited_data.png",
     "scenario": "limited_data",
     "label": "HGST HUH721212ALE600 (12 TB) -- large, long-tenured cohort"
   },
@@ -31,7 +31,7 @@
     "rmse_MLE_vs_KM": 0.0018337117348724084,
     "rmse_MVUE_vs_KM": 0.0018631142423686062,
     "rmse_Bayes_vs_KM": 0.0018230041344531132,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/comparison_WDC_22TB_full_data.png",
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/comparison_WDC_22TB_full_data.png",
     "scenario": "full_data",
     "label": "WDC WUH722222ALE6L4 (22 TB) -- Backblaze's largest single-model cohort, young fleet"
   },
@@ -43,7 +43,7 @@
     "rmse_MLE_vs_KM": 0.0031761678353395663,
     "rmse_MVUE_vs_KM": 0.9978310659086681,
     "rmse_Bayes_vs_KM": 0.0018475844809452205,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/comparison_WDC_22TB_limited_data.png",
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/comparison_WDC_22TB_limited_data.png",
     "scenario": "limited_data",
     "label": "WDC WUH722222ALE6L4 (22 TB) -- Backblaze's largest single-model cohort, young fleet"
   }
