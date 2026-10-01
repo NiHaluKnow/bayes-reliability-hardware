@@ -1,34 +1,8 @@
 """
-run_03_fit_and_compare.py
-==========================
 OBJECTIVE 3 (Comparative analysis): "Compare Bayes reliability estimates
 against classical estimators (MLE/MVUE) on the real dataset for accuracy
 and robustness" -- including, per the proposal's Expected Outcomes, "how
 each performs with limited failure counts."
-
-For each of the two real-calibrated hard-drive datasets (built by run_02)
-we run TWO scenarios:
-
-  FULL-DATA scenario: fit MLE / MVUE / Bayes(Rayleigh) on the entire
-    dataset (thousands of drives). With this much data all three should
-    -- and, as shown below, do -- agree closely with each other and with
-    the nonparametric Kaplan-Meier curve. This demonstrates the pipeline
-    is internally CONSISTENT (Objective 1) on a large, real-scale sample.
-
-  LIMITED-DATA scenario: draw a small random subsample (SMALL_SAMPLE_SIZE
-    drives) to stand in for "early / limited field data" -- e.g. the first
-    few months of a new deployment -- exactly the situation described in
-    this project's own Introduction ("Bayesian estimation offers an
-    alternative: by combining a prior belief ... with the available data,
-    it can produce usable reliability estimates even when failure data is
-    scarce"). The Rayleigh prior is centred on the FULL dataset's own MLE
-    (representing realistic prior/fleet-historical knowledge an engineer
-    would actually have -- e.g. from the manufacturer's spec sheet or a
-    previous deployment of the same drive model), then MLE / MVUE / Bayes
-    are all fit on ONLY the small subsample and compared against the
-    FULL dataset's Kaplan-Meier curve (used here as a good proxy for the
-    "true" population reliability curve, since it is built from thousands
-    of real-calibrated drives).
 
 Accuracy is quantified as RMSE against the reference Kaplan-Meier curve
 in each scenario, and both the curves and the RMSE bar charts are saved.
