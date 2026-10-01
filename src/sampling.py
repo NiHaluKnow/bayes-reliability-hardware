@@ -1,6 +1,5 @@
 """
-sampling.py
-===========
+
 Shared subsampling helper. Uses a per-model-key deterministic seed (derived
 from SUBSAMPLE_SEED + a stable hash of the model key) so that run_03 and
 run_04 can each independently reconstruct the *exact same* "limited data"
