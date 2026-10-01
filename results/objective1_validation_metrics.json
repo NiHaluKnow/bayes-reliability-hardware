@@ -15,7 +15,7 @@
     "rmse_BayesImportanceSampling_vs_BayesQuadrature": 0.00015393202688970516,
     "importance_sampling_effective_sample_size": 85385.9660488832,
     "monte_carlo_total_replications_N": 90000,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/validation_small_sample_n40.png"
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/validation_small_sample_n40.png"
   },
   {
     "tag": "medium_sample_n300",
@@ -33,7 +33,7 @@
     "rmse_BayesImportanceSampling_vs_BayesQuadrature": 5.446873960961025e-05,
     "importance_sampling_effective_sample_size": 26956.270833322254,
     "monte_carlo_total_replications_N": 90000,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/validation_medium_sample_n300.png"
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/validation_medium_sample_n300.png"
   },
   {
     "tag": "large_sample_n5000",
@@ -51,7 +51,7 @@
     "rmse_BayesImportanceSampling_vs_BayesQuadrature": 6.020273993376693e-05,
     "importance_sampling_effective_sample_size": 7371.9078349406545,
     "monte_carlo_total_replications_N": 90000,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/validation_large_sample_n5000.png"
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/validation_large_sample_n5000.png"
   },
   {
     "tag": "rayleigh_special_case_kappa2",
@@ -69,7 +69,7 @@
     "rmse_BayesImportanceSampling_vs_BayesQuadrature": 1.2168720138886336e-05,
     "importance_sampling_effective_sample_size": 33222.55541597441,
     "monte_carlo_total_replications_N": 90000,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/validation_rayleigh_special_case_kappa2.png"
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/validation_rayleigh_special_case_kappa2.png"
   },
   {
     "tag": "exponential_special_case_kappa1",
@@ -87,6 +87,6 @@
     "rmse_BayesImportanceSampling_vs_BayesQuadrature": 9.759862810612193e-05,
     "importance_sampling_effective_sample_size": 30039.79628153044,
     "monte_carlo_total_replications_N": 90000,
-    "plot": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../results/validation_exponential_special_case_kappa1.png"
+    "plot": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../results/validation_exponential_special_case_kappa1.png"
   }
 ]
