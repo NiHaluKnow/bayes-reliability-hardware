@@ -1,53 +1,5 @@
 """
-bayes_estimator.py
-===================
-Bayesian estimation of the reliability curve R(t) under a generic prior on
-the Weibull rate parameter `beta`, given right-censored failure data.
-
-Three interchangeable ways of computing the SAME quantity -- the posterior
-mean of R(t) under squared-error loss, r~(t) = E[R(t) | data] -- are
-provided, each serving a different purpose, and they are used to
-cross-validate one another (this is the "validate the implementation"
-half of Objective 1 in the project proposal):
-
-  1. `bayes_reliability_quadrature`  -- 1-D numerical integration (scipy
-     quad). Essentially exact; used as ground truth to check the two
-     simulation-based estimators below.
-
-  2. `bayes_reliability_importance_sampling` -- draw beta ~ prior(beta),
-     re-weight each draw by the likelihood (self-normalised importance
-     sampling). Efficient, generic, works for any prior.
-
-  3. `bayes_reliability_monte_carlo_paper` -- the *exact* two-stage
-     Monte-Carlo replication procedure described in Section 7.1 / Eq.
-     (29)-(30) of the base paper:
-        - draw k_s posterior samples of beta (here obtained by resampling
-          the importance-sampling draws from (2), i.e. sampling-importance-
-          resampling / SIR -- the standard way to turn weighted draws into
-          an unweighted posterior sample),
-        - for EACH of those, simulate k_r replicate Weibull lifetimes
-          using the paper's own inverse-CDF formula (Eq. 21/29),
-        - R_hat(t) = (N - k_f(t)) / N over all N = k_s * k_r replicates,
-          where k_f(t) counts replicate lifetimes <= t.
-
-LIKELIHOOD
-----------
-For data with r observed failures and sufficient statistic S = sum t^kappa
-(over all units, failed and censored -- see weibull_core.py):
-
-    L(beta) proportional to  beta**r * exp(-beta * S / kappa)
-
-Bayes' theorem gives posterior  h(beta | data) proportional to
-L(beta) * g(beta), where g is the prior. The Bayes estimator of R(t) is
-
-    r~(t) = E_h[ R(t; beta) ]
-          = Integral{ exp(-beta*t^kappa/kappa) * beta**r * g(beta) *
-                       exp(-beta*S/kappa) dbeta }
-            -------------------------------------------------------------
-            Integral{ beta**r * g(beta) * exp(-beta*S/kappa) dbeta }
-
-Note the numerator is the SAME integral as the denominator with S replaced
-by (S + t**kappa) -- a convenient identity used by the quadrature method.
+takes the same failure/censoring data, adds a prior belief about β, obtains the posterior distribution of β, and then averages the reliability over that posterior.
 """
 
 from __future__ import annotations
@@ -70,15 +22,6 @@ def _log_unnorm_posterior(beta, r, S, kappa, prior):
 
 
 def _find_mode_and_std(r, S, kappa, prior, beta_search_upper):
-    """Laplace-style localisation of the (unimodal, log-concave-ish)
-    unnormalised posterior: find its mode by 1-D bounded optimisation, then
-    estimate a local std from the numerical second derivative of the log
-    posterior at the mode. Used to place a tight, well-resolved integration
-    window for scipy.quad -- a naive [0, beta_upper] window can silently
-    MISS a very narrow posterior peak when the sample size (hence r) is
-    large, which is exactly the failure mode this function fixes (caught by
-    the run_01 validation script's own convergence assertions).
-    """
 
     def neg_log_post(beta):
         if beta <= 0:
@@ -106,13 +49,7 @@ def _find_mode_and_std(r, S, kappa, prior, beta_search_upper):
 
 
 def _integral_for_shift(shift, r, S, kappa, prior, beta_upper):
-    """Integral{ beta**r * g(beta) * exp(-beta*(S+shift)/kappa) dbeta }
-    computed on the ORIGINAL (non-log) scale via scipy.quad, after (a)
-    localising the posterior mode/std (Laplace approx) to set a tight,
-    well-resolved integration window, and (b) numerically stabilising by
-    subtracting the log-density at the mode -- avoids both overflow and the
-    "missed narrow peak" failure mode of a blind wide-range quadrature.
-    """
+
     S_shifted = S + shift
     mode, std, f0 = _find_mode_and_std(r, S_shifted, kappa, prior, beta_upper)
 
@@ -145,11 +82,7 @@ def _integral_for_shift(shift, r, S, kappa, prior, beta_upper):
 
 
 def bayes_reliability_quadrature(t, data: FailureData, prior, beta_upper=None):
-    """Near-exact Bayes estimator of R(t) via 1-D numerical integration.
 
-    Uses the identity that the "R(t)-weighted" integral is the same
-    posterior-kernel integral evaluated at S -> S + t**kappa.
-    """
     t = np.asarray(t, dtype=float)
     r, S, kappa = data.r, data.S, data.kappa
 
@@ -191,14 +124,7 @@ def bayes_reliability_quadrature(t, data: FailureData, prior, beta_upper=None):
 def bayes_reliability_importance_sampling(
     t, data: FailureData, prior, n_samples: int = 200_000, rng=None, return_samples=False
 ):
-    """Draw beta ~ prior, reweight by the likelihood beta**r*exp(-beta*S/kappa),
-    and form the self-normalised-importance-sampling estimate of
-    r~(t) = E_posterior[R(t;beta)].
 
-    Also returns the (weight-normalised) effective sample size so the
-    caller can sanity-check that the prior was a reasonable proposal
-    distribution for this posterior.
-    """
     if rng is None:
         rng = np.random.default_rng(0)
     t = np.asarray(t, dtype=float)
@@ -226,11 +152,7 @@ def bayes_reliability_importance_sampling(
 # 3. The base paper's own two-stage Monte-Carlo replication (Eq. 29-30)
 # --------------------------------------------------------------------------- #
 def sample_posterior_beta_sir(data: FailureData, prior, k_s: int, rng, n_proposal=200_000):
-    """Sampling-Importance-Resampling: turn weighted importance-sampling
-    draws of beta (step 2 above) into k_s *unweighted* draws from the
-    posterior -- i.e. exactly the "generate k_s replications of scale
-    parameter combination" step the paper describes in Section 7.1.
-    """
+
     _, beta, w, ess = bayes_reliability_importance_sampling(
         t=np.array([1.0]), data=data, prior=prior, n_samples=n_proposal, rng=rng, return_samples=True
     )
@@ -239,12 +161,7 @@ def sample_posterior_beta_sir(data: FailureData, prior, k_s: int, rng, n_proposa
 
 
 def simulate_weibull_lifetime(beta, kappa, rng, size=1):
-    """Generate a Weibull(beta, kappa) random deviate via the base paper's
-    own inverse-CDF formula (Eq. 21 / Eq. 29 generalised):
 
-        R(t) = exp(-beta * t^kappa / kappa) = U   (U ~ Uniform(0,1))
-        =>    t = ( -kappa * log(U) / beta ) ** (1/kappa)
-    """
     u = rng.random(size)
     return (-kappa * np.log(u) / beta) ** (1.0 / kappa)
 
@@ -252,15 +169,7 @@ def simulate_weibull_lifetime(beta, kappa, rng, size=1):
 def bayes_reliability_monte_carlo_paper(
     t, data: FailureData, prior, k_s: int = 300, k_r: int = 300, rng=None
 ):
-    """The paper's exact Section-7.1 procedure (Eq. 29-30):
 
-        1. Draw k_s replications of beta from its posterior (SIR).
-        2. For each, draw k_r replicate Weibull lifetimes.
-        3. R_hat(t) = (N - k_f(t)) / N,  N = k_s * k_r,
-           k_f(t) = number of replicate lifetimes <= t.
-
-    Returns R_hat(t) for every t in the input array, plus N for reference.
-    """
     if rng is None:
         rng = np.random.default_rng(0)
     t = np.asarray(t, dtype=float)
@@ -286,9 +195,7 @@ def bayes_reliability_monte_carlo_paper(
 def bayes_credible_interval(
     t, data: FailureData, prior, n_samples=200_000, rng=None, level=0.90
 ):
-    """Pointwise (level*100)% credible interval for R(t) under the
-    posterior, via the same importance-sampling draws as method 2, using
-    the weighted quantile of R(t; beta) across posterior draws."""
+
     if rng is None:
         rng = np.random.default_rng(0)
     t = np.asarray(t, dtype=float)
