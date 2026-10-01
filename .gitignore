@@ -1,10 +1,6 @@
 # Images / plots
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.webp
-*.svg
+
+
 
 # Python cache
 __pycache__/
