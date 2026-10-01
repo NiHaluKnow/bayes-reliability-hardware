@@ -1,36 +1,8 @@
 """
-run_04_prior_sensitivity.py
-============================
 OBJECTIVE 4 (Prior sensitivity): "Compare how different priors -- Rayleigh,
 Beta, and Uniform -- on the scale parameter affect the reliability
 estimates and their robustness on the chosen data."
 
-This directly mirrors the base paper's own central theme -- Sections 2-4 of
-Arekar, Jain & Kumar (2021) are explicitly a robustness study of the Bayes
-estimator under Rayleigh vs. (time-shifted) Beta vs. Uniform priors.
-
-Prior sensitivity is most informative -- and most honest to study -- in the
-LIMITED-DATA regime: with thousands of real drive-days of data (the
-full-data scenario in run_03), the likelihood dominates and any reasonable
-prior gives essentially the same posterior (we confirm this explicitly
-below too). It is precisely when data is scarce that the prior's influence
-on the reliability estimate becomes visible, which is also exactly the
-situation in which Bayesian methods are proposed as most useful (per this
-project's own Introduction). So the main comparison here uses the SAME
-"limited field data" subsample as run_03's limited-data scenario.
-
-For each of the two real hard-drive datasets we:
-  1. Build three priors on beta -- Rayleigh, Beta, Uniform -- constructed
-     to have (approximately) the SAME prior mean (via
-     priors.make_comparable_priors), so any differences in the resulting
-     posterior reflect genuine prior SHAPE/robustness effects rather than
-     simply different prior means.
-  2. Compute each prior's Bayes reliability curve r~(t) (numerical
-     quadrature) plus a 90% pointwise credible interval.
-  3. Plot all three together (full-data AND limited-data panels) and report
-     the pairwise max-difference between the three curves as a numerical
-     "prior sensitivity" / robustness summary, analogous to the paper's own
-     risk-ratio comparisons (Tables 1-3).
 """
 
 import sys
