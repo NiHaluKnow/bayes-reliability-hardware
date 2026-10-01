@@ -1,6 +1,4 @@
 """
-run_all.py
-==========
 Runs the full pipeline end-to-end, in order, exactly matching the four
 objectives in Section 4 of the project proposal:
 
@@ -11,11 +9,6 @@ objectives in Section 4 of the project proposal:
 
 Usage:
     python run_all.py
-
-All console output is also what each individual run_0X script prints when
-run on its own; this wrapper just calls them in the right order (run_02
-must run before run_03/run_04, since they consume the datasets it writes
-to data/).
 """
 
 import subprocess
