@@ -1,10 +1,3 @@
-"""
-config.py
-=========
-Single source of truth for constants shared across the run_0X scripts, so
-the dataset-construction step (run_02) and every downstream analysis step
-(run_03, run_04) always agree on the assumed Weibull shape and random seed.
-"""
 
 # Assumed (known) Weibull shape parameter for the hard-drive case study.
 # See run_02_build_dataset.py's module docstring for the justification.
