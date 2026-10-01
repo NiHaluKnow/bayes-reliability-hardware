@@ -1,17 +1,3 @@
-"""
-export_dashboard_data.py
-=========================
-NOT one of the four proposal-objective pipeline stages (run_01..run_04) --
-this is a small helper that re-runs the same computations those scripts do,
-but instead of only saving PNG plots + scalar JSON metrics, it also exports
-the full underlying (t, R(t)) curve arrays to a single JSON file, so an
-interactive HTML dashboard (see the project's `dashboard.html` artifact) can
-plot every result live in the browser instead of only showing static PNGs.
-
-Must be run AFTER run_01..run_04 (it reads data/*_per_drive_dataset.csv,
-which run_02 produces).
-"""
-
 import sys
 import os
 import json
