@@ -1,0 +1,842 @@
+BAYESIAN RELIABILITY PROJECT
+IMPLEMENTATION GUIDE FOR NEW CONTRIBUTORS
+
+Purpose of this document
+========================
+
+This document explains how the project works, where each part is implemented,
+and how to run and interpret the complete workflow. It is intended for someone
+who has not seen the code before.
+
+The project estimates the reliability of computer hard drives over time. It
+implements a Weibull reliability model and compares three estimation styles:
+
+  1. MLE: a classical maximum-likelihood estimate.
+  2. MVUE: a classical unbiased reliability estimate for the known-shape
+     Weibull model.
+  3. Bayes: a posterior average of reliability after combining the data with a
+     prior belief about the Weibull rate parameter.
+
+The project also compares the model-based curves with a Kaplan-Meier curve and
+studies how the choice of prior affects the answer.
+
+
+1. The mental model
+===================
+
+A reliability curve answers this question:
+
+  R(t) = probability that a unit is still working after time t.
+
+Here, a unit is a hard drive and t is its service age in days. The project
+assumes that all drives in one analysis share a known Weibull shape parameter
+called kappa. The unknown parameter is beta, a rate or failure-intensity
+parameter.
+
+The model used throughout the project is:
+
+  f(t | beta, kappa)
+    = beta * t^(kappa - 1) * exp(-beta * t^kappa / kappa)
+
+  R(t | beta, kappa)
+    = exp(-beta * t^kappa / kappa)
+
+Interpretation:
+
+  - Larger beta means failures happen faster, so reliability is lower.
+  - Larger kappa changes how failure risk changes with age.
+  - kappa = 1 gives an exponential-like constant-hazard model.
+  - kappa > 1 gives an increasing failure tendency with age.
+  - This project uses kappa = 1.3 for the hard-drive case study.
+
+The textbook Weibull scale eta is related to beta by:
+
+  beta = kappa / eta^kappa
+  eta  = (kappa / beta)^(1 / kappa)
+
+The code uses beta because that is the parameterization used by the source
+paper and because it produces a simple likelihood for censored observations.
+
+
+2. Why censoring matters
+========================
+
+A drive can appear in the data in two ways:
+
+  Failure:
+    The drive is observed to fail at a known time.
+
+  Right censoring:
+    The drive is observed working until its last recorded time, but its exact
+    failure time is unknown. It may have left the fleet, or the observation
+    period may have ended.
+
+A censored drive still contributes useful information: it survived at least
+until its censoring time. The model must therefore use both failure times and
+censoring times.
+
+For failure times t_i and censoring times c_j, define:
+
+  r = number of observed failures
+
+  S = sum over failures of t_i^kappa
+      + sum over censored drives of c_j^kappa
+
+For this known-shape Weibull model, the data affect beta through r and S. This
+is the most important implementation idea in the project:
+
+  Once a dataset has been converted to r, S, and kappa, every estimator can
+  work without needing the original drive IDs, dates, or CSV rows.
+
+The likelihood, ignoring factors that do not depend on beta, is:
+
+  L(beta | data) proportional to beta^r * exp(-beta * S / kappa)
+
+This explains the behavior of the estimators:
+
+  - More failures increase r and push beta upward.
+  - More accumulated survival time increases S and pushes beta downward.
+  - A dataset with no failures has r = 0 and requires special handling.
+
+
+3. Core data object and classical estimators
+============================================
+
+File: src/weibull_core.py
+
+This is the central statistical module. It defines the data contract used by
+all downstream code.
+
+3.1 FailureData
+----------------
+
+The dataclass FailureData stores:
+
+  failure_times: one positive time for each observed failure
+  censor_times: one positive time for each right-censored unit
+  kappa: the positive, assumed-known Weibull shape
+
+Important properties:
+
+  data.r = number of failures
+  data.n = number of failures plus number of censored units
+  data.S = sum(failure_times^kappa) + sum(censor_times^kappa)
+
+FailureData validates that all times and kappa are strictly positive.
+Its summary() method returns the main counts and sufficient statistic.
+
+3.2 Weibull functions
+---------------------
+
+Implemented functions:
+
+  weibull_pdf(t, beta, kappa)
+    Evaluates the model density.
+
+  weibull_reliability(t, beta, kappa)
+    Evaluates R(t | beta, kappa).
+
+  beta_to_scale(beta, kappa)
+  scale_to_beta(eta, kappa)
+    Convert between this project's rate parameter and the textbook scale.
+
+3.3 MLE
+--------
+
+The log likelihood is:
+
+  log L(beta) = r * log(beta) - beta * S / kappa + constant
+
+Setting its derivative to zero gives:
+
+  beta_hat_MLE = r * kappa / S
+
+Implemented by:
+
+  mle_beta(data)
+
+The reliability curve is obtained by substituting beta_hat into the Weibull
+survival function:
+
+  R_MLE(t) = exp(-r * t^kappa / S)
+
+Implemented by:
+
+  mle_reliability(t, data)
+
+If r is zero, mle_beta returns 0.0 and mle_reliability returns an all-ones
+curve. This is a direct representation of the fact that no observed failure
+forces the likelihood-only estimate toward zero failure rate.
+
+3.4 MVUE
+---------
+
+The implemented classical unbiased reliability estimator is:
+
+  R_MVUE(t) = (1 - t^kappa / S)^(r - 1), when t^kappa < S
+               0,                         otherwise
+
+Implemented by:
+
+  mvue_reliability(t, data)
+
+This formula is derived for a known-shape Weibull model under a Type-II
+censoring setup. The hard-drive field data are closer to Type-I/calendar-time
+censoring, so the project uses this formula as a conventional comparison
+estimator and explicitly records that modelling caveat.
+
+For r = 0, the implementation returns zero everywhere. This is a fallback
+because the usual formula has exponent r - 1 and is not meaningful in the
+zero-failure case. It is important when interpreting the limited-data plots:
+zero observed failures can make MLE look optimistically equal to one while the
+implemented MVUE collapses to zero.
+
+mse_mvue_analytic() is an approximate diagnostic curve. It is not used as the
+main estimator in the four pipeline stages.
+
+
+4. Bayesian estimation intuition
+=================================
+
+File: src/bayes_estimator.py
+
+Bayesian estimation does not select only one beta value. It creates a posterior
+distribution over beta:
+
+  posterior(beta | data) proportional to
+      beta^r * prior_density(beta) * exp(-beta * S / kappa)
+
+The Bayesian reliability estimate is the posterior mean:
+
+  R_Bayes(t) = E[ R(t | beta) | data ]
+
+In plain language:
+
+  1. The prior says which beta values were plausible before this dataset.
+  2. The likelihood says which beta values explain the observed failures and
+     survival times.
+  3. The posterior combines both.
+  4. The final reliability is the average reliability over that posterior.
+
+The module implements three different numerical routes to the same Bayesian
+quantity. This is deliberate: agreement between independent routes is a check
+that the statistical and numerical implementation is working.
+
+4.1 Numerical quadrature: reference calculation
+-------------------------------------------------
+
+Function:
+
+  bayes_reliability_quadrature(t, data, prior)
+
+This is treated as the near-exact reference calculation. It evaluates the
+one-dimensional posterior integrals directly with scipy.integrate.quad.
+
+For a particular t, the numerator differs from the denominator only by adding
+t^kappa to S:
+
+  numerator uses S + t^kappa
+  denominator uses S
+
+The implementation first locates the posterior mode and estimates local
+curvature so that it can integrate a narrow posterior accurately. It also
+checks the remaining tails. Log-density shifting prevents numerical overflow
+or underflow.
+
+Beta and Uniform priors have finite upper support, so their support limits are
+used directly. The Rayleigh prior is unbounded; its integration range is
+scaled from the larger of the prior mean and the likelihood-only MLE.
+
+4.2 Importance sampling
+------------------------
+
+Function:
+
+  bayes_reliability_importance_sampling(
+      t, data, prior, n_samples=200000, rng=...
+  )
+
+Steps:
+
+  1. Draw beta values from the prior.
+  2. Give each draw a weight proportional to the likelihood:
+
+       weight(beta) = beta^r * exp(-beta * S / kappa)
+
+  3. Normalize the weights.
+  4. Compute a weighted average of R(t | beta).
+
+The function also returns an effective sample size (ESS):
+
+  ESS = 1 / sum(normalized_weight^2)
+
+A low ESS means that the prior proposal is a poor match for the posterior and
+that the importance-sampling result may be noisy.
+
+4.3 Paper-style Monte Carlo calculation
+----------------------------------------
+
+Functions:
+
+  sample_posterior_beta_sir(...)
+  simulate_weibull_lifetime(...)
+  bayes_reliability_monte_carlo_paper(...)
+
+This follows the source paper's two-stage simulation idea:
+
+  1. Draw many beta values from the prior and reweight them.
+  2. Resample k_s beta values according to those weights. This is
+     sampling-importance-resampling, or SIR, and approximates posterior draws.
+  3. For every posterior beta draw, simulate k_r Weibull lifetimes using the
+     inverse CDF:
+
+       lifetime = (-kappa * log(U) / beta)^(1 / kappa)
+
+  4. For each query time t, count simulated lifetimes at or below t.
+  5. Reliability is the fraction above t:
+
+       R_hat(t) = (N - number_of_simulated_failures_by_t) / N
+       N = k_s * k_r
+
+The default validation settings use 300 beta draws and 300 lifetimes per draw,
+so N = 90,000 simulated lifetimes.
+
+This method is more visibly Monte Carlo-noisy than quadrature, but it is close
+to the procedure described in the paper and is useful for validating the
+implementation.
+
+4.4 Credible intervals
+----------------------
+
+Function:
+
+  bayes_credible_interval(t, data, prior, ...)
+
+It obtains weighted posterior beta samples using importance sampling, converts
+each beta sample to R(t), and takes weighted pointwise quantiles. The prior
+sensitivity plots show these as 90 percent credible bands.
+
+
+5. Prior distributions
+=======================
+
+File: src/priors.py
+
+Every prior implements the same small interface:
+
+  prior.sample(size, rng)
+  prior.logpdf(beta)
+  prior.mean
+
+This lets the Bayesian code work with different priors without knowing which
+prior class it received.
+
+5.1 RayleighPrior
+------------------
+
+This is the prior used in the source paper:
+
+  g(beta) = beta / b^2 * exp(-beta^2 / (2*b^2))
+
+The parameter b controls the spread and its mean is:
+
+  b * sqrt(pi / 2)
+
+The class samples with the inverse-CDF formula
+
+  beta = b * sqrt(-2 * log(U))
+
+5.2 BetaPrior
+-------------
+
+A standard Beta(mu, nu) variable on (0, 1) is rescaled to (0, scale). This
+gives a bounded prior over beta with a potentially different shape from the
+Rayleigh prior.
+
+5.3 UniformPrior
+----------------
+
+A uniform prior over [a, b]. It is also bounded and has a different tail and
+shape behavior from Rayleigh and Beta.
+
+5.4 Comparable priors
+---------------------
+
+Function:
+
+  make_comparable_priors(center, spread=1.0)
+
+This creates Rayleigh, Beta, and Uniform priors with approximately the same
+mean, normally centered near a full-data MLE. Matching the means makes the
+comparison focus more on prior shape and tail behavior rather than simply
+comparing different prior locations.
+
+The means are only approximately identical because the Uniform prior starts at
+1e-9 rather than exactly zero.
+
+
+6. How the hard-drive data enters the model
+============================================
+
+File: src/data_pipeline.py
+
+There are three ingestion/building paths.
+
+6.1 Current default: genuine filtered Backblaze records
+---------------------------------------------------------
+
+Function:
+
+  load_real_backblaze_dataset(csv_path, full_model_name, kappa)
+
+The checked-in default workflow uses:
+
+  data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv
+
+This is a filtered file containing daily records for the two drive models of
+interest. For each serial number:
+
+  1. Sort its records by date.
+  2. Keep the last record in the quarter.
+  3. Read the failure flag from that record.
+  4. Read SMART attribute 9 power-on hours from that record.
+  5. Convert hours to days by dividing by 24.
+  6. Put the age into failure_times if failure == 1, otherwise into
+     censor_times.
+
+Why use power-on hours? A single quarter only shows part of a drive's history.
+Power-on hours are the drive's cumulative service age and therefore preserve
+its age at the last event even when earlier quarterly files are unavailable.
+
+The current checked-in data describes approximately:
+
+  HGST HUH721212ALE600, 12 TB: 2,608 drives and 8 failures
+  WDC WUH722222ALE6L4, 22 TB: 45,638 drives and 42 failures
+
+The exact generated counts and provenance are written to:
+
+  data/objective2_dataset_provenance.json
+
+6.2 Alternative raw CSV parser
+-------------------------------
+
+Function:
+
+  load_backblaze_raw_csvs(csv_dir, model, kappa)
+
+This parses the standard Backblaze daily CSV schema and computes each drive's
+observed duration as last_date minus first_date. It is appropriate when the
+folder contains the complete multi-quarter history from deployment. With only
+one quarter, it measures visibility in that quarter rather than the drive's
+full age, which is why it is not the current default.
+
+6.3 Synthetic aggregate-calibrated fallback
+---------------------------------------------
+
+Functions:
+
+  calibrate_beta_from_aggregate(...)
+  build_real_stat_calibrated_dataset(...)
+
+This fallback is retained for environments without the raw Backblaze file. It:
+
+  1. Takes published drive count, cumulative drive-days, and failure count.
+  2. Computes average censoring horizon C = drive_days / drive_count.
+  3. Solves beta so the model's failure probability at C matches the observed
+     failure proportion.
+  4. Simulates individual Weibull lifetimes.
+  5. Marks lifetimes at or before C as failures and the rest as censored at C.
+
+This preserves aggregate targets but does not reproduce the real individual
+failure days.
+
+
+7. Nonparametric reference curve
+================================
+
+File: src/nonparametric.py
+
+Functions:
+
+  kaplan_meier(data)
+  km_at(t_query, km_times, km_surv)
+
+Kaplan-Meier is a model-free survival estimator. It processes failure and
+censoring events in time order and multiplies the survival probability by:
+
+  1 - deaths / units_at_risk
+
+Censoring removes units from the risk set but does not directly reduce survival.
+Tied events at the same time are processed together.
+
+For the real drive analysis, beta is unknown, so the full-data Kaplan-Meier
+curve is used as a reference rather than claiming it is the exact truth. The
+model-based MLE, MVUE, and Bayes curves are evaluated on the same time grid and
+compared to the Kaplan-Meier values with RMSE.
+
+
+8. Reproducible limited-data experiments
+=========================================
+
+File: src/sampling.py
+
+Function:
+
+  deterministic_small_sample(key, data_full, n_sub=50)
+
+The project creates a limited-data scenario by uniformly sampling 50 units
+without replacement while preserving whether each selected unit failed or was
+censored. This is not a chronological first-50 sample.
+
+The sample is repeatable because the seed is derived from:
+
+  SUBSAMPLE_SEED + SHA256(model_key)
+
+This lets run_03 and run_04 independently reconstruct the same limited sample.
+
+Shared values are defined in src/config.py:
+
+  ASSUMED_KAPPA   = 1.3
+  DATASET_SEED    = 42
+  SUBSAMPLE_SEED  = 7
+  SMALL_SAMPLE_SIZE = 50
+
+
+9. The four main workflows
+==========================
+
+The order is controlled by run_all.py. Run from the project directory:
+
+  pip install -r requirements.txt
+  python run_all.py
+
+The individual stages can also be run separately.
+
+9.1 Objective 1: validate the implementation
+----------------------------------------------
+
+File:
+
+  run_scripts/run_01_validate_implementation.py
+
+What it does:
+
+  1. Simulates right-censored Weibull samples with known beta and kappa.
+  2. Builds FailureData from those simulated samples.
+  3. Computes true reliability from the known parameters.
+  4. Computes MLE, MVUE, quadrature Bayes, importance-sampling Bayes, and
+     paper-style Monte Carlo Bayes.
+  5. Measures RMSE against the known truth and agreement between Bayesian
+     numerical methods.
+  6. Runs convergence sanity checks on the large sample.
+
+The scenarios include small, medium, and large samples plus kappa = 1 and
+kappa = 2 special cases.
+
+Outputs:
+
+  results/objective1_validation_metrics.json
+  results/validation_*.png
+
+A good result is that beta MLE improves with sample size and the independent
+Bayesian calculations agree within Monte Carlo error. Exact reproduction of
+inconsistent printed tables from the source paper is not the validation target.
+
+9.2 Objective 2: build drive datasets
+--------------------------------------
+
+File:
+
+  run_scripts/run_02_build_dataset.py
+
+What it does:
+
+  1. Reads the filtered raw Backblaze file.
+  2. Processes each configured drive model.
+  3. Builds FailureData using real final-record failure flags and SMART ages.
+  4. Writes a simple per-drive CSV with columns:
+
+       time_days,event
+
+     where event = 1 means failure and event = 0 means censored.
+
+  5. Writes a provenance JSON file.
+
+Outputs:
+
+  data/HGST_12TB_per_drive_dataset.csv
+  data/WDC_22TB_per_drive_dataset.csv
+  data/objective2_dataset_provenance.json
+
+9.3 Objective 3: compare MLE, MVUE, and Bayes
+---------------------------------------------
+
+File:
+
+  run_scripts/run_03_fit_and_compare.py
+
+For each drive model it runs two scenarios.
+
+Full-data scenario:
+
+  - Fit all estimators on the complete per-drive dataset.
+  - Use a Rayleigh prior centered on the full-data MLE.
+  - Build a full-data Kaplan-Meier reference.
+
+Limited-data scenario:
+
+  - Fit all estimators on the deterministic 50-drive subsample.
+  - Keep the prior centered using the full-data MLE, representing prior fleet
+    or manufacturer knowledge available before the small sample was collected.
+  - Still compare with the full-data Kaplan-Meier reference.
+
+Outputs:
+
+  results/objective3_comparison_metrics.json
+  results/comparison_*.png
+  results/rmse_bars_*.png
+
+The main metric is RMSE between each model-based reliability curve and the
+Kaplan-Meier reference. Full data should make reasonable estimators converge.
+Limited data reveals the effect of sparse failures and prior information.
+
+9.4 Objective 4: compare priors
+--------------------------------
+
+File:
+
+  run_scripts/run_04_prior_sensitivity.py
+
+For each model and both full and limited data, it:
+
+  1. Creates matched-mean Rayleigh, Beta, and Uniform priors.
+  2. Computes each Bayes reliability curve by quadrature.
+  3. Computes 90 percent pointwise credible intervals.
+  4. Extends the time grid to four times the observed censoring horizon.
+  5. Reports the maximum pairwise absolute difference between prior curves.
+
+Outputs:
+
+  results/objective4_prior_sensitivity_metrics.json
+  results/prior_sensitivity_*.png
+
+Prior differences are usually small when there is abundant data because the
+likelihood dominates. They become more visible with few failures and during
+extrapolation beyond the observed horizon.
+
+
+10. Plotting and exported dashboard data
+=========================================
+
+File: src/plotting.py
+
+All plotting uses Matplotlib's non-interactive Agg backend and saves PNG files.
+The main helpers are:
+
+  plot_validation_recovery()
+  plot_estimator_comparison()
+  plot_prior_sensitivity()
+  plot_rmse_bar()
+
+File:
+
+  run_scripts/export_dashboard_data.py
+
+This optional helper recomputes objective 1, 3, and 4 curve arrays and exports
+them as JSON for an interactive consumer. It must run after the main pipeline
+because it reads the generated per-drive datasets.
+
+Output:
+
+  results/dashboard_data.json
+
+
+11. File-by-file map
+====================
+
+Top-level files:
+
+  README.md
+    Project motivation, mathematical background, data provenance notes, and
+    headline results. Some older wording may describe the synthetic fallback;
+    current code behavior is documented in this guide.
+
+  requirements.txt
+    Python dependencies, including NumPy, SciPy, Pandas, and Matplotlib.
+
+  run_all.py
+    Calls run_01, run_02, run_03, and run_04 in order and stops on failure.
+
+  demo.sh
+    Shell-oriented demonstration wrapper with checks and printed summaries.
+
+src files:
+
+  src/config.py
+    Shared kappa, random seeds, and limited-sample size.
+
+  src/weibull_core.py
+    FailureData, Weibull functions, MLE, MVUE, and an approximate MSE helper.
+
+  src/priors.py
+    Rayleigh, Beta, and Uniform prior classes plus matched-mean construction.
+
+  src/bayes_estimator.py
+    Posterior kernel, quadrature, importance sampling, SIR posterior draws,
+    Weibull simulation, paper-style Monte Carlo, and credible intervals.
+
+  src/data_pipeline.py
+    Real Backblaze ingestion, alternative raw parser, aggregate statistics,
+    and synthetic fallback dataset construction.
+
+  src/nonparametric.py
+    Kaplan-Meier estimation and step-function evaluation.
+
+  src/sampling.py
+    Reproducible limited-data subsampling.
+
+  src/plotting.py
+    Shared PNG plotting functions.
+
+run_scripts files:
+
+  run_01_validate_implementation.py
+    Known-truth simulation and estimator validation.
+
+  run_02_build_dataset.py
+    Real raw data to per-drive CSV conversion.
+
+  run_03_fit_and_compare.py
+    MLE/MVUE/Bayes comparison against full-data Kaplan-Meier.
+
+  run_04_prior_sensitivity.py
+    Rayleigh/Beta/Uniform comparison and credible intervals.
+
+  export_dashboard_data.py
+    Optional curve-array export for a dashboard.
+
+Data files:
+
+  data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv
+    Filtered raw daily records used by the current default data build.
+
+  data/*_per_drive_dataset.csv
+    Compact downstream input with one row per drive.
+
+  data/objective2_dataset_provenance.json
+    Source, date range, counts, and age-measure metadata.
+
+Results files:
+
+  results/*metrics.json
+    Numeric summaries from objectives 1, 3, and 4.
+
+  results/*.png
+    Validation, comparison, RMSE, and prior-sensitivity figures.
+
+  results/dashboard_data.json
+    Optional full curve arrays for interactive display.
+
+
+12. Practical workflow for changing the project
+================================================
+
+If changing the statistical model:
+
+  1. Start in src/weibull_core.py and confirm the parameterization.
+  2. Update the likelihood-dependent logic in src/bayes_estimator.py.
+  3. Update or add a known-truth case in run_01_validate_implementation.py.
+  4. Run Objective 1 before trusting real-data results.
+
+If changing data ingestion:
+
+  1. Start in src/data_pipeline.py.
+  2. Confirm the resulting FailureData counts, positive times, r, and S.
+  3. Run run_02_build_dataset.py.
+  4. Inspect data/objective2_dataset_provenance.json.
+  5. Then run objectives 3 and 4.
+
+If adding a prior:
+
+  1. Implement sample(), logpdf(), and mean in src/priors.py.
+  2. Check support boundaries and numerical behavior near zero.
+  3. Test quadrature and importance sampling separately.
+  4. Check importance-sampling ESS.
+  5. Add it to make_comparable_priors() if it belongs in the sensitivity study.
+
+If changing plots or metrics:
+
+  1. Keep statistical calculations in the model modules or run scripts.
+  2. Keep rendering in src/plotting.py.
+  3. Preserve the JSON metrics so results remain machine-readable.
+
+
+13. Important limitations and interpretation warnings
+======================================================
+
+  - kappa = 1.3 is assumed, not fitted separately for each drive model.
+
+  - The current default data path uses genuine filtered Backblaze records, but
+    the synthetic aggregate-calibrated builder remains available as a fallback.
+
+  - The MVUE formula is derived for Type-II censoring but is applied to field
+    data with Type-I/calendar-time-style censoring.
+
+  - Kaplan-Meier is a nonparametric reference, not known ground truth, for the
+    real-data comparisons.
+
+  - The limited sample is random and reproducible, not chronological.
+
+  - A zero-failure sample is intrinsically difficult. In this implementation,
+    MLE gives R(t) = 1, MVUE gives R(t) = 0, and Bayes gives a prior-informed
+    intermediate result. This is a behavior to understand, not automatically a
+    numerical bug.
+
+  - Importance sampling is sensitive to prior/proposal mismatch. Always inspect
+    ESS when using that route.
+
+  - Prior sensitivity is most informative outside the observed horizon. Curves
+    can look nearly identical within the data-supported region while diverging
+    during long-term extrapolation.
+
+  - FailureData intentionally discards drive IDs and dates after conversion.
+    Any analysis needing those fields must happen in the data pipeline first.
+
+  - The source paper's printed tables contain reported inconsistencies. The
+    project's stronger validation target is recovery of known simulated truth
+    and agreement between independent Bayesian calculations.
+
+
+14. Minimal commands
+====================
+
+From bayesian_reliability_project/:
+
+  pip install -r requirements.txt
+  python run_scripts/run_01_validate_implementation.py
+  python run_scripts/run_02_build_dataset.py
+  python run_scripts/run_03_fit_and_compare.py
+  python run_scripts/run_04_prior_sensitivity.py
+
+Or run the complete sequence:
+
+  python run_all.py
+
+After the four stages, inspect:
+
+  data/objective2_dataset_provenance.json
+  results/objective1_validation_metrics.json
+  results/objective3_comparison_metrics.json
+  results/objective4_prior_sensitivity_metrics.json
+  results/*.png
+
+The shortest useful summary of the architecture is:
+
+  raw or simulated observations
+      -> FailureData(failure_times, censor_times, kappa)
+      -> r and S sufficient statistics
+      -> MLE / MVUE / Bayesian estimators
+      -> reliability curves
+      -> Kaplan-Meier comparison, RMSE, plots, and JSON results
+
+That chain is the implementation's backbone.
