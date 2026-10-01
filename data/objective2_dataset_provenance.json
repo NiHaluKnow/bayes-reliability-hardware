@@ -1,7 +1,7 @@
 {
   "HGST_12TB": {
     "source": "real Backblaze Drive Stats, Q1 2026 (data_Q1_2026.zip, downloaded from backblaze.com)",
-    "source_csv": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv",
+    "source_csv": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv",
     "model": "HGST HUH721212ALE600",
     "date_range": [
       "2026-01-01",
@@ -13,11 +13,11 @@
     "assumed_kappa": 1.3,
     "age_measure": "SMART attribute 9 (power-on hours) at each drive's last recorded day in the quarter, converted to days",
     "label": "HGST HUH721212ALE600 (12 TB) -- large, long-tenured cohort",
-    "dataset_csv": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../data/HGST_12TB_per_drive_dataset.csv"
+    "dataset_csv": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../data/HGST_12TB_per_drive_dataset.csv"
   },
   "WDC_22TB": {
     "source": "real Backblaze Drive Stats, Q1 2026 (data_Q1_2026.zip, downloaded from backblaze.com)",
-    "source_csv": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv",
+    "source_csv": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../data/raw_backblaze_HGST12TB_WDC22TB_Q1_2026.csv",
     "model": "WDC WUH722222ALE6L4",
     "date_range": [
       "2026-01-01",
@@ -29,6 +29,6 @@
     "assumed_kappa": 1.3,
     "age_measure": "SMART attribute 9 (power-on hours) at each drive's last recorded day in the quarter, converted to days",
     "label": "WDC WUH722222ALE6L4 (22 TB) -- Backblaze's largest single-model cohort, young fleet",
-    "dataset_csv": "/home/nihal/Desktop/project-402/claude/bayesian_reliability_project/run_scripts/../data/WDC_22TB_per_drive_dataset.csv"
+    "dataset_csv": "/home/nihal/Desktop/project-402/project/bayesian_reliability_project/run_scripts/../data/WDC_22TB_per_drive_dataset.csv"
   }
 }
